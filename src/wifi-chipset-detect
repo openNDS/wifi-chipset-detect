@@ -77,17 +77,17 @@ for dir in /sys/class/ieee80211/phy* /sys/class/ieee80211/wl*; do
 
 	# MediaTek Filogic 820/830 integrated (mt7622-wmac – E8450 etc.)
 	if [ -z "$chipset" ] && echo "$driver" | grep -q mt7622-wmac; then
-		chipset="MediaTek MT7622 (integrated 2.4 GHz) (mt7622-wmac)"
+		chipset="MediaTek MT7622 (integrated 2.4 GHz)"
 	fi
 
 	# Ralink rt2800pci / rt2800usb
 	if [ -z "$chipset" ] && echo "$driver" | grep -q -E 'rt2800pci|rt2800usb'; then
-		chipset="Ralink RT5370/RT3070 (2.4 GHz, Wi-Fi 4) ($driver)"
+		chipset="Ralink RT5370/RT3070 (2.4 GHz, Wi-Fi 4)"
 	fi
 
 	# Realtek rtl8192cu
 	if [ -z "$chipset" ] && echo "$driver" | grep -q rtl8192cu; then
-		chipset="Realtek RTL8192CU (2.4/5 GHz, Wi-Fi 4) (rtl8192cu)"
+		chipset="Realtek RTL8192CU (2.4/5 GHz, Wi-Fi 4)"
 	fi
 
 	# Marvell mwlwifi mwifiex_sdio
@@ -113,21 +113,21 @@ for dir in /sys/class/ieee80211/phy* /sys/class/ieee80211/wl*; do
 		case "$driver" in
 			ath9k)
 				case "$compat" in
-					*"qca,qca9530-wmac"*) chipset="Qualcomm Atheros AR95xx series (ath9k)" ;;
-					*)                    chipset="Qualcomm Atheros AR93xx/AR5416 series (ath9k)" ;;
+					*"qca,qca9530-wmac"*) chipset="Qualcomm Atheros AR953x series (2.4 GHz, Wi-Fi 4)" ;;
+					*)                    chipset="Qualcomm Atheros AR93xx/AR5416 series" ;;
 				esac
 				;;
 
-			ath10k_ahb) chipset="Qualcomm Atheros QCA9886 (ath10k_ahb – Lantiq)" ;;
-			ath10k_pci) chipset="Qualcomm Atheros QCA9984/QCA9886 (ath10k_pci)" ;;
+			ath10k_ahb) chipset="Qualcomm Atheros QCA9886 (Lantiq)" ;;
+			ath10k_pci) chipset="Qualcomm Atheros QCA9984/QCA9886" ;;
 			ath11k)
 				case "$compat" in
-					*"ipq5018-wifi"*) chipset="Qualcomm IPQ5018 integrated 2.4 GHz (ath11k)" ;;
-					*"qcn6122"*)      chipset="Qualcomm QCN6122 (Wi-Fi 6E) (ath11k)" ;;
-					*"qcn9074"*)      chipset="Qualcomm QCN9074 (ath11k)" ;;
-					*"ipq6018-wifi"*) chipset="Qualcomm QCN9074 (ath11k)" ;;
-					*"ipq807"*)       chipset="Qualcomm QCN9074/QCN5024 (ath11k)" ;;
-					*)                chipset="Qualcomm QCN9074/QCN5024 (ath11k)" ;;
+					*"ipq5018-wifi"*) chipset="Qualcomm IPQ5018 integrated 2.4 GHz" ;;
+					*"qcn6122"*)      chipset="Qualcomm QCN6122 (Wi-Fi 6E)" ;;
+					*"qcn9074"*)      chipset="Qualcomm QCN9074" ;;
+					*"ipq6018-wifi"*) chipset="Qualcomm QCN9074" ;;
+					*"ipq807"*)       chipset="Qualcomm QCN9074/QCN5024" ;;
+					*)                chipset="Qualcomm QCN9074/QCN5024" ;;
 				esac
 				;;
 		esac
