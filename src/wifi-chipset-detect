@@ -1,139 +1,146 @@
 #!/bin/sh
 # /usr/bin/wifi-chipset-detect – works on everything tested Nov 2025
-. /etc/openwrt_release 2>/dev/null
-echo "OpenWrt: ${DISTRIB_RELEASE:-unknown} ${DISTRIB_DESCRIPTION:-$(uname -r)}"
 
-if [ -f /etc/board.json ]; then
-	device=$(grep -m1 '"name":' /etc/board.json | sed 's/.*"name": *"\([^"]*\)".*/\1/' 2>/dev/null)
-	if [ -n "$device" ] && ! echo "$device" | grep -Eqw "(WAN|LAN|ACT|LINK|DSL|WLAN|POWER|USB|WPS)"; then
-		echo "Device: $device"
-	fi
-elif [ -f /tmp/sysinfo/model ]; then
-	echo "Device: $(cat /tmp/sysinfo/model)"
-elif [ -f /tmp/sysinfo/board_name ]; then
-	echo "Device: $(cat /tmp/sysinfo/board_name)"
-else
-	echo "Device: unknown"
-fi
 
-for dir in /sys/class/ieee80211/phy* /sys/class/ieee80211/wl*; do
-	[ -d "$dir" ] || continue
-	name="${dir##*/}"
-	driver=$(awk -F= '/^DRIVER=/ {print $2; exit}' "$dir/device/uevent" 2>/dev/null || echo "n/a")
-	chipset=""
+wifi_chipset_detect() {
+	. /etc/openwrt_release 2>/dev/null
+	echo "Operating_System: ${DISTRIB_RELEASE:-unknown} ${DISTRIB_DESCRIPTION:-$(uname -r)}"
 
-	chipset=$(cat "$dir/device/label" "$dir/device/name" \
-	              "$dir/mac80211/label" "$dir/mac80211/name" 2>/dev/null | head -n1 | xargs)
-
-	# Broadcom brcmfmac
-	if [ -z "$chipset" ] && echo "$driver" | grep -q brcmfmac; then
-		modalias=$(tr '\0' '\n' < "$dir/device/modalias" 2>/dev/null)
-		fw=$(ls "$dir"/device/firmware/*/brcmfmac* 2>/dev/null | head -n1 | xargs basename 2>/dev/null || true)
-		case "$modalias:$fw" in
-			*bcm4329*|*bcm4330*) chipset="Broadcom BCM4329/BCM4330 (Wi-Fi 4)" ;;
-			*bcm43430*)          chipset="Broadcom BCM43430 (Wi-Fi 5)" ;;
-			*bcm43455*)          chipset="Broadcom BCM43455 (Wi-Fi 5)" ;;
-			*bcm4356*)           chipset="Broadcom BCM4356 (Wi-Fi 5)" ;;
-			*bcm4378*)           chipset="Broadcom BCM4378 (Wi-Fi 6)" ;;
-			*)                   chipset="Broadcom brcmfmac (Wi-Fi)" ;;
-		esac
+	if [ -f /etc/board.json ]; then
+		device=$(grep -m1 '"name":' /etc/board.json | sed 's/.*"name": *"\([^"]*\)".*/\1/' 2>/dev/null)
+		if [ -n "$device" ] && ! echo "$device" | grep -Eqw "(WAN|LAN|ACT|LINK|DSL|WLAN|POWER|USB|WPS)"; then
+			echo "Device: $device"
+		fi
+	elif [ -f /tmp/sysinfo/model ]; then
+		echo "Device: $(cat /tmp/sysinfo/model)"
+	elif [ -f /tmp/sysinfo/board_name ]; then
+		echo "Device: $(cat /tmp/sysinfo/board_name)"
+	else
+		echo "Device: unknown"
 	fi
 
-	# MediaTek Filogic / mt79xx family – now includes MT7996 Wi-Fi 7
-	if [ -z "$chipset" ] && [ -f "$dir/device/modalias" ]; then
-		modalias=$(tr '\0' '\n' < "$dir/device/modalias" 2>/dev/null)
-		if echo "$modalias" | grep -iq 'mt79'; then
-			if echo "$modalias" | grep -iq '7996'; then chipset="MediaTek MT7996 (Wi-Fi 7)"
-			elif echo "$modalias" | grep -iq '798'; then chipset="MediaTek Filogic 830/810/880 (MT798x integrated WiFi)"
-			elif echo "$modalias" | grep -iq '7916'; then chipset="MediaTek MT7916 (Wi-Fi 6E)"
-			elif echo "$modalias" | grep -iq '7915'; then chipset="MediaTek MT7915E (Wi-Fi 6)"
-			elif echo "$modalias" | grep -iq '792'; then chipset="MediaTek MT792x"
+	for dir in /sys/class/ieee80211/phy* /sys/class/ieee80211/wl*; do
+		[ -d "$dir" ] || continue
+		name="${dir##*/}"
+		driver=$(awk -F= '/^DRIVER=/ {print $2; exit}' "$dir/device/uevent" 2>/dev/null || echo "n/a")
+		chipset=""
+
+		chipset=$(cat "$dir/device/label" "$dir/device/name" \
+		              "$dir/mac80211/label" "$dir/mac80211/name" 2>/dev/null | head -n1 | xargs)
+
+		# Broadcom brcmfmac
+		if [ -z "$chipset" ] && echo "$driver" | grep -q brcmfmac; then
+			modalias=$(tr '\0' '\n' < "$dir/device/modalias" 2>/dev/null)
+			fw=$(ls "$dir"/device/firmware/*/brcmfmac* 2>/dev/null | head -n1 | xargs basename 2>/dev/null || true)
+			case "$modalias:$fw" in
+				*bcm4329*|*bcm4330*) chipset="Broadcom BCM4329/BCM4330 (Wi-Fi 4)" ;;
+				*bcm43430*)          chipset="Broadcom BCM43430 (Wi-Fi 5)" ;;
+				*bcm43455*)          chipset="Broadcom BCM43455 (Wi-Fi 5)" ;;
+				*bcm4356*)           chipset="Broadcom BCM4356 (Wi-Fi 5)" ;;
+				*bcm4378*)           chipset="Broadcom BCM4378 (Wi-Fi 6)" ;;
+				*)                   chipset="Broadcom brcmfmac (Wi-Fi)" ;;
+			esac
+		fi
+
+		# MediaTek Filogic / mt79xx family – now includes MT7996 Wi-Fi 7
+		if [ -z "$chipset" ] && [ -f "$dir/device/modalias" ]; then
+			modalias=$(tr '\0' '\n' < "$dir/device/modalias" 2>/dev/null)
+			if echo "$modalias" | grep -iq 'mt79'; then
+				if echo "$modalias" | grep -iq '7996'; then chipset="MediaTek MT7996 (Wi-Fi 7)"
+				elif echo "$modalias" | grep -iq '798'; then chipset="MediaTek Filogic 830/810/880 (MT798x integrated WiFi)"
+				elif echo "$modalias" | grep -iq '7916'; then chipset="MediaTek MT7916 (Wi-Fi 6E)"
+				elif echo "$modalias" | grep -iq '7915'; then chipset="MediaTek MT7915E (Wi-Fi 6)"
+				elif echo "$modalias" | grep -iq '792'; then chipset="MediaTek MT792x"
+				fi
 			fi
 		fi
-	fi
 
-	# Older MediaTek PCIe + USB
-	if [ -z "$chipset" ] && echo "$driver" | grep -q -E 'mt7603e|mt76x2e|mt7915e|mt7615e|mt76x0u'; then
-		case "$driver" in
-			mt7915e) chipset="MediaTek MT7915E (Wi-Fi 6)" ;;
-			mt7615e) chipset="MediaTek MT7615E (Wi-Fi 5)" ;;
-			mt7603e) chipset="MediaTek MT7603E (2.4 GHz)" ;;
-			mt76x2e) chipset="MediaTek MT76x2E (5 GHz)" ;;
-			mt76x0u) chipset="MediaTek MT7610U (Wi-Fi 5 USB) (mt76x0u)" ;;
-		esac
-	fi
-
-	# Legacy MediaTek SoCs with mt76_wmac – all patterns quoted (hyphen-safe)
-	if [ -z "$chipset" ] && echo "$driver" | grep -q mt76_wmac; then
-		compat=$(grep -h '^OF_COMPATIBLE_' "$dir"/hwmon/hwmon*/uevent "$dir"/hwmon*/uevent 2>/dev/null | head -n1 | cut -d= -f2)
-		case "$compat" in
-			*"mt7628"*) chipset="MediaTek MT7628AN (integrated 2.4 GHz)" ;;
-			*"mt7621"*) chipset="MediaTek MT7621AN/AT (integrated 2.4 GHz)" ;;
-			*"mt7622"*) chipset="MediaTek MT7622 (integrated 2.4/5 GHz)" ;;
-			*"mt7620"*) chipset="MediaTek MT7620N (integrated 2.4 GHz)" ;;
-			*)          chipset="Legacy MediaTek mt76_wmac SoC" ;;
-		esac
-	fi
-
-	# MediaTek Filogic 820/830 integrated (mt7622-wmac – E8450 etc.)
-	if [ -z "$chipset" ] && echo "$driver" | grep -q mt7622-wmac; then
-		chipset="MediaTek MT7622 (integrated 2.4 GHz)"
-	fi
-
-	# Ralink rt2800pci / rt2800usb
-	if [ -z "$chipset" ] && echo "$driver" | grep -q -E 'rt2800pci|rt2800usb'; then
-		chipset="Ralink RT5370/RT3070 (2.4 GHz, Wi-Fi 4)"
-	fi
-
-	# Realtek rtl8192cu
-	if [ -z "$chipset" ] && echo "$driver" | grep -q rtl8192cu; then
-		chipset="Realtek RTL8192CU (2.4/5 GHz, Wi-Fi 4)"
-	fi
-
-	# Marvell mwlwifi mwifiex_sdio
-	if [ -z "$chipset" ] && echo "$driver" | grep -q -E 'mwlwifi|mwifiex_sdio'; then
-		compat=$(grep -Eh 'PCI_ID|SDIO_ID' "$dir"/device/uevent 2>/dev/null | cut -d= -f2)
-		case "$compat" in
-			"11AB:2A55") chipset="Marvell 88W8864 (2.4/5 GHz, Wi-Fi 5)" ;;
-			"11AB:2B40") chipset="Marvell 88W8964 (2.4/5 GHz, Wi-Fi 5)" ;;
-			"11AB:2B38") chipset="Marvell 88W8897 (2.4/5 GHz, Wi-Fi 5)" ;;
-			"02DF:9135") chipset="Marvell 88W8887 (2.4/5 GHz, Wi-Fi 5)" ;;
-			*) chipset="unknown Marvell Wi-Fi" ;;
-		esac
-	fi
-
-	# Qualcomm Atheros – ath9k + ath10k + ath11k
-	if [ -z "$chipset" ] && echo "$driver" | grep -q -E 'ath9k|ath10k|ath11k'; then
-		compat=$(grep -h '^OF_COMPATIBLE_' "$dir"/hwmon/hwmon*/uevent "$dir"/hwmon*/uevent 2>/dev/null | head -n1 | cut -d= -f2)
-
-		if [ -z "$compat" ]; then
-			compat=$(grep -h '^OF_COMPATIBLE_' "$dir"/device/uevent 2>/dev/null | head -n1 | cut -d= -f2)
+		# Older MediaTek PCIe + USB
+		if [ -z "$chipset" ] && echo "$driver" | grep -q -E 'mt7603e|mt76x2e|mt7915e|mt7615e|mt76x0u'; then
+			case "$driver" in
+				mt7915e) chipset="MediaTek MT7915E (Wi-Fi 6)" ;;
+				mt7615e) chipset="MediaTek MT7615E (Wi-Fi 5)" ;;
+				mt7603e) chipset="MediaTek MT7603E (2.4 GHz)" ;;
+				mt76x2e) chipset="MediaTek MT76x2E (5 GHz)" ;;
+				mt76x0u) chipset="MediaTek MT7610U (Wi-Fi 5 USB) (mt76x0u)" ;;
+			esac
 		fi
 
-		case "$driver" in
-			ath9k)
-				case "$compat" in
-					*"qca,qca9530-wmac"*) chipset="Qualcomm Atheros AR953x series (2.4 GHz, Wi-Fi 4)" ;;
-					*)                    chipset="Qualcomm Atheros AR93xx/AR5416 series" ;;
-				esac
-				;;
+		# Legacy MediaTek SoCs with mt76_wmac – all patterns quoted (hyphen-safe)
+		if [ -z "$chipset" ] && echo "$driver" | grep -q mt76_wmac; then
+			compat=$(grep -h '^OF_COMPATIBLE_' "$dir"/hwmon/hwmon*/uevent "$dir"/hwmon*/uevent 2>/dev/null | head -n1 | cut -d= -f2)
+			case "$compat" in
+				*"mt7628"*) chipset="MediaTek MT7628AN (integrated 2.4 GHz)" ;;
+				*"mt7621"*) chipset="MediaTek MT7621AN/AT (integrated 2.4 GHz)" ;;
+				*"mt7622"*) chipset="MediaTek MT7622 (integrated 2.4/5 GHz)" ;;
+				*"mt7620"*) chipset="MediaTek MT7620N (integrated 2.4 GHz)" ;;
+				*)          chipset="Legacy MediaTek mt76_wmac SoC" ;;
+			esac
+		fi
 
-			ath10k_ahb) chipset="Qualcomm Atheros QCA9886 (Lantiq)" ;;
-			ath10k_pci) chipset="Qualcomm Atheros QCA9984/QCA9886" ;;
-			ath11k)
-				case "$compat" in
-					*"ipq5018-wifi"*) chipset="Qualcomm IPQ5018 integrated 2.4 GHz" ;;
-					*"qcn6122"*)      chipset="Qualcomm QCN6122 (Wi-Fi 6E)" ;;
-					*"qcn9074"*)      chipset="Qualcomm QCN9074" ;;
-					*"ipq6018-wifi"*) chipset="Qualcomm QCN9074" ;;
-					*"ipq807"*)       chipset="Qualcomm QCN9074/QCN5024" ;;
-					*)                chipset="Qualcomm QCN9074/QCN5024" ;;
-				esac
-				;;
-		esac
-	fi
+		# MediaTek Filogic 820/830 integrated (mt7622-wmac – E8450 etc.)
+		if [ -z "$chipset" ] && echo "$driver" | grep -q mt7622-wmac; then
+			chipset="MediaTek MT7622 (integrated 2.4 GHz)"
+		fi
 
-	[ -z "$chipset" ] && chipset="unknown"
-	echo "$name: $chipset  ($driver)"
-done
+		# Ralink rt2800pci / rt2800usb
+		if [ -z "$chipset" ] && echo "$driver" | grep -q -E 'rt2800pci|rt2800usb'; then
+			chipset="Ralink RT5370/RT3070 (2.4 GHz, Wi-Fi 4)"
+		fi
+
+		# Realtek rtl8192cu
+		if [ -z "$chipset" ] && echo "$driver" | grep -q rtl8192cu; then
+			chipset="Realtek RTL8192CU (2.4/5 GHz, Wi-Fi 4)"
+		fi
+
+		# Marvell mwlwifi mwifiex_sdio
+		if [ -z "$chipset" ] && echo "$driver" | grep -q -E 'mwlwifi|mwifiex_sdio'; then
+			compat=$(grep -Eh 'PCI_ID|SDIO_ID' "$dir"/device/uevent 2>/dev/null | cut -d= -f2)
+			case "$compat" in
+				"11AB:2A55") chipset="Marvell 88W8864 (2.4/5 GHz, Wi-Fi 5)" ;;
+				"11AB:2B40") chipset="Marvell 88W8964 (2.4/5 GHz, Wi-Fi 5)" ;;
+				"11AB:2B38") chipset="Marvell 88W8897 (2.4/5 GHz, Wi-Fi 5)" ;;
+				"02DF:9135") chipset="Marvell 88W8887 (2.4/5 GHz, Wi-Fi 5)" ;;
+				*) chipset="unknown Marvell Wi-Fi" ;;
+			esac
+		fi
+
+		# Qualcomm Atheros – ath9k + ath10k + ath11k
+		if [ -z "$chipset" ] && echo "$driver" | grep -q -E 'ath9k|ath10k|ath11k'; then
+			compat=$(grep -h '^OF_COMPATIBLE_' "$dir"/hwmon/hwmon*/uevent "$dir"/hwmon*/uevent 2>/dev/null | head -n1 | cut -d= -f2)
+
+			if [ -z "$compat" ]; then
+				compat=$(grep -h '^OF_COMPATIBLE_' "$dir"/device/uevent 2>/dev/null | head -n1 | cut -d= -f2)
+			fi
+
+			case "$driver" in
+				ath9k)
+					case "$compat" in
+						*"qca,qca9530-wmac"*) chipset="Qualcomm Atheros AR953x series (2.4 GHz, Wi-Fi 4)" ;;
+						*)                    chipset="Qualcomm Atheros AR93xx/AR5416 series" ;;
+					esac
+					;;
+
+				ath10k_ahb) chipset="Qualcomm Atheros QCA9886 (Lantiq)" ;;
+				ath10k_pci) chipset="Qualcomm Atheros QCA9984/QCA9886" ;;
+				ath11k)
+					case "$compat" in
+						*"ipq5018-wifi"*) chipset="Qualcomm IPQ5018 integrated 2.4 GHz" ;;
+						*"qcn6122"*)      chipset="Qualcomm QCN6122 (Wi-Fi 6E)" ;;
+						*"qcn9074"*)      chipset="Qualcomm QCN9074" ;;
+						*"ipq6018-wifi"*) chipset="Qualcomm QCN9074" ;;
+						*"ipq807"*)       chipset="Qualcomm QCN9074/QCN5024" ;;
+						*)                chipset="Qualcomm QCN9074/QCN5024" ;;
+					esac
+					;;
+			esac
+		fi
+
+		[ -z "$chipset" ] && chipset="unknown"
+		echo "$name: $chipset  ($driver)"
+	done
+}
+
+wifi_chipset_detect
+
 
