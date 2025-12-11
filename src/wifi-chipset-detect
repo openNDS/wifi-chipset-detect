@@ -1,23 +1,50 @@
 #!/bin/sh
-# /usr/bin/wifi-chipset-detect – works on everything tested Nov 2025
+# Copyright (C) BlueWave Projects and Services 2025
+#
+#	This software is released under the GNU General Public License version 3 or any later version.
+#	This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation,
+#	either version 3 of the License, or (at your option) any later version.
+#
+#	This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+#	See the GNU General Public License for more details.
+#
+#	To obtain a copy of the GNU General Public License, see <https://www.gnu.org/licenses/>.
+#
 
+last_version="0.1.0~be7a"
+version="1.0.0~be7a"
+
+if [ ! -z "$1" ] && [ "$1" = "-v" ] || [ "$1" = "--version" ]; then
+	echo "wifi-chipset-detect: version $version"
+	exit 0
+fi
 
 wifi_chipset_detect() {
 	. /etc/openwrt_release 2>/dev/null
-	echo "Operating_System: ${DISTRIB_RELEASE:-unknown} ${DISTRIB_DESCRIPTION:-$(uname -r)}"
+	echo "{" > /tmp/wifidetect
+	echo "  \"System\": {" >> /tmp/wifidetect
+	echo "    \"Distribution\": \"${DISTRIB_ID:-unknown}\"," >> /tmp/wifidetect
+	echo "    \"Release\": \"${DISTRIB_RELEASE:-unknown}\"," >> /tmp/wifidetect
+	echo "    \"Revision\": \"${DISTRIB_REVISION:-unknown}\"," >> /tmp/wifidetect
+	echo "    \"Target\": \"${DISTRIB_TARGET:-unknown}\"," >> /tmp/wifidetect
+	echo "    \"Architecture\": \"${DISTRIB_ARCH:-unknown}\"," >> /tmp/wifidetect
+	echo "    \"Description\": \"${DISTRIB_DESCRIPTION:-unknown}\"," >> /tmp/wifidetect
 
 	if [ -f /etc/board.json ]; then
 		device=$(grep -m1 '"name":' /etc/board.json | sed 's/.*"name": *"\([^"]*\)".*/\1/' 2>/dev/null)
 		if [ -n "$device" ] && ! echo "$device" | grep -Eqw "(WAN|LAN|ACT|LINK|DSL|WLAN|POWER|USB|WPS)"; then
-			echo "Device: $device"
+			echo "    \"Device\": \"$device\"" >> /tmp/wifidetect
 		fi
 	elif [ -f /tmp/sysinfo/model ]; then
-		echo "Device: $(cat /tmp/sysinfo/model)"
+		echo "    \"Device\": \"$(cat /tmp/sysinfo/model)\"" >> /tmp/wifidetect
 	elif [ -f /tmp/sysinfo/board_name ]; then
-		echo "Device: $(cat /tmp/sysinfo/board_name)"
+		echo "    \"Device\": \"$(cat /tmp/sysinfo/board_name)\"" >> /tmp/wifidetect
 	else
-		echo "Device: unknown"
+		echo "    \"Device\": \"unknown\"" >> /tmp/wifidetect
 	fi
+
+	echo "  }," >> /tmp/wifidetect
+	echo "  \"phy\": {" >> /tmp/wifidetect
 
 	for dir in /sys/class/ieee80211/phy* /sys/class/ieee80211/wl*; do
 		[ -d "$dir" ] || continue
@@ -137,10 +164,17 @@ wifi_chipset_detect() {
 		fi
 
 		[ -z "$chipset" ] && chipset="unknown"
-		echo "$name: $chipset  ($driver)"
+		echo "    \"$name\": {" >> /tmp/wifidetect
+		echo "      \"Chipset\": \"$chipset\"," >> /tmp/wifidetect
+		echo "      \"Driver\": \"$driver\"" >> /tmp/wifidetect
+		echo "    }," >> /tmp/wifidetect
 	done
+
+	sed -i '$ s/.$//' /tmp/wifidetect
+	echo "  }" >> /tmp/wifidetect
+	echo "}" >> /tmp/wifidetect
 }
 
 wifi_chipset_detect
-
+cat /tmp/wifidetect
 
