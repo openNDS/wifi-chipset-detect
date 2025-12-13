@@ -20,9 +20,23 @@ if [ ! -z "$1" ] && [ "$1" = "-v" ] || [ "$1" = "--version" ]; then
 fi
 
 wifi_chipset_detect() {
+	# Attempt to get the label mac
+	ifaces="wan eth1 eth0"
+
+	for iface in $ifaces; do
+		labelmac=$(cat /sys/class/net/$iface/address 2>/dev/null)
+
+		if [ -z "$labelmac" ]; then
+			continue
+		else
+			labelmac="@$labelmac"
+			break
+		fi
+	done
+
 	. /etc/openwrt_release 2>/dev/null
 	echo "{" > /tmp/wifidetect
-	echo "  \"System\": {" >> /tmp/wifidetect
+	echo "  \"System$labelmac\": {" >> /tmp/wifidetect
 	echo "    \"Distribution\": \"${DISTRIB_ID:-unknown}\"," >> /tmp/wifidetect
 	echo "    \"Release\": \"${DISTRIB_RELEASE:-unknown}\"," >> /tmp/wifidetect
 	echo "    \"Revision\": \"${DISTRIB_REVISION:-unknown}\"," >> /tmp/wifidetect
@@ -33,18 +47,17 @@ wifi_chipset_detect() {
 	if [ -f /etc/board.json ]; then
 		device=$(grep -m1 '"name":' /etc/board.json | sed 's/.*"name": *"\([^"]*\)".*/\1/' 2>/dev/null)
 		if [ -n "$device" ] && ! echo "$device" | grep -Eqw "(WAN|LAN|ACT|LINK|DSL|WLAN|POWER|USB|WPS)"; then
-			echo "    \"Device\": \"$device\"" >> /tmp/wifidetect
+			echo "    \"Device\": \"$device\"," >> /tmp/wifidetect
 		fi
 	elif [ -f /tmp/sysinfo/model ]; then
-		echo "    \"Device\": \"$(cat /tmp/sysinfo/model)\"" >> /tmp/wifidetect
+		echo "    \"Device\": \"$(cat /tmp/sysinfo/model)\"," >> /tmp/wifidetect
 	elif [ -f /tmp/sysinfo/board_name ]; then
-		echo "    \"Device\": \"$(cat /tmp/sysinfo/board_name)\"" >> /tmp/wifidetect
+		echo "    \"Device\": \"$(cat /tmp/sysinfo/board_name)\"," >> /tmp/wifidetect
 	else
-		echo "    \"Device\": \"unknown\"" >> /tmp/wifidetect
+		echo "    \"Device\": \"unknown\"," >> /tmp/wifidetect
 	fi
 
-	echo "  }," >> /tmp/wifidetect
-	echo "  \"phy\": {" >> /tmp/wifidetect
+	echo "    \"phy\": {" >> /tmp/wifidetect
 
 	for dir in /sys/class/ieee80211/phy* /sys/class/ieee80211/wl*; do
 		[ -d "$dir" ] || continue
@@ -164,13 +177,14 @@ wifi_chipset_detect() {
 		fi
 
 		[ -z "$chipset" ] && chipset="unknown"
-		echo "    \"$name\": {" >> /tmp/wifidetect
-		echo "      \"Chipset\": \"$chipset\"," >> /tmp/wifidetect
-		echo "      \"Driver\": \"$driver\"" >> /tmp/wifidetect
-		echo "    }," >> /tmp/wifidetect
+		echo "      \"$name\": {" >> /tmp/wifidetect
+		echo "        \"Chipset\": \"$chipset\"," >> /tmp/wifidetect
+		echo "        \"Driver\": \"$driver\"" >> /tmp/wifidetect
+		echo "      }," >> /tmp/wifidetect
 	done
 
 	sed -i '$ s/.$//' /tmp/wifidetect
+	echo "    }" >> /tmp/wifidetect
 	echo "  }" >> /tmp/wifidetect
 	echo "}" >> /tmp/wifidetect
 }
