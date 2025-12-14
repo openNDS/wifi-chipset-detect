@@ -64,16 +64,44 @@ wifi_chipset_detect() {
 		name="${dir##*/}"
 		driver=$(awk -F= '/^DRIVER=/ {print $2; exit}' "$dir/device/uevent" 2>/dev/null || echo "n/a")
 		chipset=""
-                band="unknown band"
 
-		# Band detection (reliable even if radio down; handles ".0" and ranges rnd detection (reliable even if radio down; handles ".0" and ranges robustly)
+		# Band detection for multi-band capable PHYs (works even if radio is down)
 		phy_info=$(iw phy "$name" info 2>/dev/null)
-		if echo "$phy_info" | grep -qE "24[0-8][0-9](\.0)? MHz"; then
-			band="2.4 GHz"
-		elif echo "$phy_info" | grep -qE "5[0-9]{3}(\.0)? MHz"; then
-			band="5 GHz"
-		elif echo "$phy_info" | grep -qE "[6-7][0-9]{3}(\.0)? MHz"; then
-			band="6 GHz"
+		bands=""
+
+		# Dynamically detect each band section and determine its type based on frequencies
+		for band_num in 1 2 3 4; do
+			if echo "$phy_info" | grep -q "Band ${band_num}:"; then
+				next_band=$((band_num + 1))
+				# Extract the band section up to the next band or EOF
+				band_info=$(echo "$phy_info" | sed -n "/Band ${band_num}:/,/Band ${next_band}:/p")
+				# If next band exists, remove the last line (which is "Band ${next_band}:")
+				if echo "$band_info" | grep -q "Band ${next_band}:"; then
+					band_info=$(echo "$band_info" | sed '$d')
+				fi
+
+				# Detect band type from frequencies in this section
+				if echo "$band_info" | grep -qE "[* ]+24[0-9]{2}(\.0)? MHz"; then
+					[ -n "$bands" ] && bands="$bands/2.4GHz" || bands="2.4GHz"
+				elif echo "$band_info" | grep -qE "[* ]+5[0-9]{3}(\.0)? MHz"; then
+					[ -n "$bands" ] && bands="$bands/5GHz" || bands="5GHz"
+				elif echo "$band_info" | grep -qE "[* ]+[6-7][0-9]{3}(\.0)? MHz"; then
+					[ -n "$bands" ] && bands="$bands/6GHz" || bands="6GHz"
+				fi
+			fi
+		done
+
+		# Fallback: if no Band sections found or no bands detected, try raw frequency matching
+		if [ -z "$bands" ]; then
+			if echo "$phy_info" | grep -qE "24[0-9]{2}(\.0)? MHz"; then
+				bands="2.4GHz"
+			fi
+			if echo "$phy_info" | grep -qE "5[0-9]{3}(\.0)? MHz"; then
+				[ -n "$bands" ] && bands="$bands/5GHz" || bands="5GHz"
+			fi
+			if echo "$phy_info" | grep -qE "[6-7][0-9]{3}(\.0)? MHz"; then
+				[ -n "$bands" ] && bands="$bands/6GHz" || bands="6GHz"
+			fi
 		fi
 
 		chipset=$(cat "$dir/device/label" "$dir/device/name" \
@@ -189,7 +217,7 @@ wifi_chipset_detect() {
 
 		[ -z "$chipset" ] && chipset="unknown"
 		echo "      \"$name\": {" >> /tmp/wifidetect
-		echo "        \"Chipset\": \"$band $chipset\"," >> /tmp/wifidetect
+		echo "        \"Chipset\": \"$bands $chipset\"," >> /tmp/wifidetect
 		echo "        \"Driver\": \"$driver\"" >> /tmp/wifidetect
 		echo "      }," >> /tmp/wifidetect
 	done
