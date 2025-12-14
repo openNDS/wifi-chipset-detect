@@ -64,6 +64,17 @@ wifi_chipset_detect() {
 		name="${dir##*/}"
 		driver=$(awk -F= '/^DRIVER=/ {print $2; exit}' "$dir/device/uevent" 2>/dev/null || echo "n/a")
 		chipset=""
+                band="unknown band"
+
+		# Band detection (reliable even if radio down; handles ".0" and ranges rnd detection (reliable even if radio down; handles ".0" and ranges robustly)
+		phy_info=$(iw phy "$name" info 2>/dev/null)
+		if echo "$phy_info" | grep -qE "24[0-8][0-9](\.0)? MHz"; then
+			band="2.4 GHz"
+		elif echo "$phy_info" | grep -qE "5[0-9]{3}(\.0)? MHz"; then
+			band="5 GHz"
+		elif echo "$phy_info" | grep -qE "[6-7][0-9]{3}(\.0)? MHz"; then
+			band="6 GHz"
+		fi
 
 		chipset=$(cat "$dir/device/label" "$dir/device/name" \
 		              "$dir/mac80211/label" "$dir/mac80211/name" 2>/dev/null | head -n1 | xargs)
@@ -178,7 +189,7 @@ wifi_chipset_detect() {
 
 		[ -z "$chipset" ] && chipset="unknown"
 		echo "      \"$name\": {" >> /tmp/wifidetect
-		echo "        \"Chipset\": \"$chipset\"," >> /tmp/wifidetect
+		echo "        \"Chipset\": \"$band $chipset\"," >> /tmp/wifidetect
 		echo "        \"Driver\": \"$driver\"" >> /tmp/wifidetect
 		echo "      }," >> /tmp/wifidetect
 	done
