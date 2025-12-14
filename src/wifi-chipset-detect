@@ -14,6 +14,10 @@
 last_version="0.1.0~be7a"
 version="1.0.0~be7a"
 
+if [  -e "/tmp/wifi-chipset.debug" ]; then
+	rm "/tmp/wifi-chipset.debug"
+fi
+
 if [ ! -z "$1" ] && [ "$1" = "-v" ] || [ "$1" = "--version" ]; then
 	echo "wifi-chipset-detect: version $version"
 	exit 0
@@ -196,12 +200,12 @@ wifi_chipset_detect() {
 				ath9k)
 					case "$compat" in
 						*"qca,qca9530-wmac"*) chipset="Qualcomm Atheros AR953x series (2.4 GHz, Wi-Fi 4)" ;;
-						*)                    chipset="Qualcomm Atheros AR93xx/AR5416 series" ;;
+						*)                    chipset="Qualcomm Atheros AR93xx/AR92xx/AR5416 series" ;;
 					esac
 					;;
 
 				ath10k_ahb) chipset="Qualcomm Atheros QCA9886 (Lantiq)" ;;
-				ath10k_pci) chipset="Qualcomm Atheros QCA9984/QCA9886" ;;
+				ath10k_pci) chipset="Qualcomm Atheros QCA9984/QCA988x/QCA986x series" ;;
 				ath11k)
 					case "$compat" in
 						*"ipq5018-wifi"*) chipset="Qualcomm IPQ5018 integrated 2.4 GHz" ;;
