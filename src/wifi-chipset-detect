@@ -133,6 +133,12 @@ wifi_chipset_detect() {
 		[ -z "$bands" ] && bands="unknown"
 		[ -z "$standards" ] && standards="legacy"
 
+		# 802.11s mesh support detection
+		mesh="no"
+		if echo "$phy_info" | grep -q "mesh point"; then
+			mesh="yes"
+		fi
+
 		chipset=$(cat "$dir/device/label" "$dir/device/name" \
 		              "$dir/mac80211/label" "$dir/mac80211/name" 2>/dev/null | head -n1 | xargs)
 
@@ -259,11 +265,17 @@ wifi_chipset_detect() {
 		echo "        \"Standards\": [" >> /tmp/wifidetect
 
 		for standard in $standards; do
-			echo "          \"$standard\"," >> /tmp/wifidetect
+			echo "          \"802.11$standard\"," >> /tmp/wifidetect
 		done
 
 		sed -i '$ s/.$//' /tmp/wifidetect
 		echo "        ]," >> /tmp/wifidetect
+
+		if [ "$mesh" = "yes" ]; then
+			echo "        \"MeshPoint\": \"802.11s\"," >> /tmp/wifidetect
+		else
+			echo "        \"MeshPoint\": \"N/A\"," >> /tmp/wifidetect
+		fi
 
 		echo "        \"Driver\": \"$driver\"" >> /tmp/wifidetect
 		echo "      }," >> /tmp/wifidetect
