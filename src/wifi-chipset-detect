@@ -207,6 +207,11 @@ wifi_chipset_detect() {
 			chipset="Realtek RTL8192CU (2.4/5 GHz, Wi-Fi 4)"
 		fi
 
+		# Realtek rtl7620/rt2880
+		if [ -z "$chipset" ] && [ "$driver" = "rt2800_wmac" ]; then
+			chipset="Realtek RTL7620-RTL2880 series(Wi-Fi 4)"
+		fi
+
 		# Marvell mwlwifi mwifiex_sdio
 		if [ -z "$chipset" ] && echo "$driver" | grep -q -E 'mwlwifi|mwifiex_sdio'; then
 			compat=$(grep -Eh 'PCI_ID|SDIO_ID' "$dir"/device/uevent 2>/dev/null | cut -d= -f2)
