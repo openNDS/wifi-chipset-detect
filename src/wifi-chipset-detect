@@ -197,6 +197,11 @@ wifi_chipset_detect() {
 			chipset="MediaTek MT7622 (integrated 2.4 GHz)"
 		fi
 
+		# Ralink rt7620/rt2880
+		if [ -z "$chipset" ] && [ "$driver" = "rt2800_wmac" ]; then
+			chipset="Ralink RT7620-RT2880 series(Wi-Fi 4)"
+		fi
+
 		# Ralink rt2800pci / rt2800usb
 		if [ -z "$chipset" ] && echo "$driver" | grep -q -E 'rt2800pci|rt2800usb'; then
 			chipset="Ralink RT5370/RT3070 (2.4 GHz, Wi-Fi 4)"
@@ -205,11 +210,6 @@ wifi_chipset_detect() {
 		# Realtek rtl8192cu
 		if [ -z "$chipset" ] && echo "$driver" | grep -q rtl8192cu; then
 			chipset="Realtek RTL8192CU (2.4/5 GHz, Wi-Fi 4)"
-		fi
-
-		# Realtek rtl7620/rt2880
-		if [ -z "$chipset" ] && [ "$driver" = "rt2800_wmac" ]; then
-			chipset="Realtek RTL7620-RTL2880 series(Wi-Fi 4)"
 		fi
 
 		# Marvell mwlwifi mwifiex_sdio
