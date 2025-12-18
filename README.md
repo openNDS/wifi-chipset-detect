@@ -14,4 +14,59 @@ The thread can be seen here:
 
 https://forum.openwrt.org/t/wifi-chipset-driver-detection-script-works-with-radios-enabled-or-disabled-please-show-your-test-outputs-nov-2025
 
+### Example outputs ###
+
+*Detect installed chipsets and drivers*:
+```
+root@meshnode-256d:~# wifi-chipset-detect
+{
+  "System@94:83:c4:5c:25:6d": {
+    "Distribution": "OpenWrt",
+    "Release": "SNAPSHOT",
+    "Revision": "r31119-fe27cce1ec",
+    "Target": "qualcommax/ipq60xx",
+    "Architecture": "aarch64_cortex-a53",
+    "Description": "OpenWrt SNAPSHOT r31119-fe27cce1ec",
+    "Device": "GL.iNet GL-AXT1800",
+    "phy": {
+      "phy0": {
+        "Chipset": "Qualcomm QCN9074",
+        "Bands": [
+          "5GHz"
+        ],
+        "Standards": [
+          "802.11n",
+          "802.11ac",
+          "802.11ax"
+        ],
+        "MeshPoint": "802.11s",
+        "Driver": "ath11k"
+      },
+      "phy1": {
+        "Chipset": "Qualcomm QCN9074",
+        "Bands": [
+          "2.4GHz"
+        ],
+        "Standards": [
+          "802.11n",
+          "802.11ax"
+        ],
+        "MeshPoint": "802.11s",
+        "Driver": "ath11k"
+      }
+    }
+  }
+}
+root@meshnode-256d:~# 
+
+```
+*Show the version*:
+```
+root@meshnode-256d:~# wifi-chipset-detect -v
+wifi-chipset-detect: version 1.0.0
+root@meshnode-256d:~# 
+
+
+```
+
 
