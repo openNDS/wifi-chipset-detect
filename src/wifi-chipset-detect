@@ -215,24 +215,26 @@ wifi_chipset_detect() {
 		# MediaTek Filogic / mt79xx family – now includes MT7996 Wi-Fi 7
 		if [ -z "$chipset" ] && [ -f "$dir/device/modalias" ]; then
 			modalias=$(tr '\0' '\n' < "$dir/device/modalias" 2>/dev/null)
-			filogic_modalias="$modalias"
-			write_debug "filogic_modalias"
 
 			if echo "$modalias" | grep -iq 'mt79'; then
+				filogic_modalias="$modalias"
+				write_debug "filogic_modalias"
+
 				if echo "$modalias" | grep -iq '7996'; then chipset="MediaTek MT7996 (Wi-Fi 7)"
 				elif echo "$modalias" | grep -iq '798'; then chipset="MediaTek Filogic 830/810/880 (MT798x integrated WiFi)"
 				elif echo "$modalias" | grep -iq '7916'; then chipset="MediaTek MT7916 (Wi-Fi 6E)"
 				elif echo "$modalias" | grep -iq '7915'; then chipset="MediaTek MT7915E (Wi-Fi 6)"
 				elif echo "$modalias" | grep -iq '792'; then chipset="MediaTek MT792x"
 				fi
+				filogic_chipset="$chipset"
+				write_debug "filogic_chipset"
 			fi
 
 			if [ -z "$chipset" ] && [ "$driver" = "mt7996e" ]; then
 				chipset="MediaTek MT7996 (Wi-Fi 7)"
+				filogic_chipset="$chipset"
+				write_debug "filogic_chipset"
 			fi
-
-			filogic_chipset="$chipset"
-			write_debug "filogic_chipset"
 		fi
 
 		# MediaTek PCIe + USB
