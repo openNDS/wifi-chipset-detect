@@ -92,20 +92,24 @@ wifi_chipset_detect() {
 		write_debug "default_driver"
 		chipset=""
 
-		# Band and 802.11 standards detection (robust, no false positives)
+		# Band and 802.11 standards detection
 		phy_info=$(iw phy "$name" info 2>/dev/null)
 		bands=""
 		standards=""
 
 		# Per-band detection
 		for band_num in 1 2 3 4; do
+			write_debug "band_num"
 
 			if echo "$phy_info" | grep -q "Band ${band_num}:"; then
 				next_band=$((band_num + 1))
 				band_info=$(echo "$phy_info" | sed -n "/Band ${band_num}:/,/Band ${next_band}:/p")
+
 				if echo "$band_info" | grep -q "Band ${next_band}:"; then
 					band_info=$(echo "$band_info" | sed '$d')
 				fi
+
+				write_debug "band_info"
 
 				# Bands (unchanged)
 				if echo "$band_info" | grep -qE "[* ]+24[0-9]{2}(\.0)? MHz"; then
