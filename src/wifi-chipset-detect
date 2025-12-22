@@ -143,18 +143,28 @@ wifi_chipset_detect() {
 		per_band_detection_standards="$standards"
 		write_debug "per_band_detection_standards"
 
-		# Fallback: infer missing bands from capabilities (for modern MediaTek Wi-Fi 6E/7)
-		if echo "$phy_info" | grep -qi "EHT"; then
-			# Wi-Fi 7 chips are almost always tri-band
-			echo "$bands" | grep -qw "5GHz" || bands="${bands:+$bands }5GHz"
-			echo "$bands" | grep -qw "6GHz" || bands="${bands:+$bands }6GHz"
-		elif echo "$phy_info" | grep -qi "HE.*160MHz\|HE.*80+80"; then
-			# Wi-Fi 6E likely if wide channels but no explicit 6GHz freqs
-			echo "$bands" | grep -qw "5GHz" || bands="${bands:+$bands }5GHz"
-			echo "$bands" | grep -qw "6GHz" || bands="${bands:+$bands }6GHz"
-		elif echo "$phy_info" | grep -qi "HE.*80MHz"; then
-			# Wi-Fi 6 dual-band common
-			echo "$bands" | grep -qw "5GHz" || bands="${bands:+$bands }5GHz"
+		# Improved fallback: prioritize explicit frequencies, infer conservatively
+		has_2ghz=0; has_5ghz=0; has_6ghz=0
+		echo "$bands" | grep -qw "2.4GHz" && has_2ghz=1
+		echo "$bands" | grep -qw "5GHz" && has_5ghz=1
+		echo "$bands" | grep -qw "6GHz" && has_6ghz=1
+
+		# Explicit frequencies anywhere (robust even if not in Band sections)
+		if ! [ "$has_6ghz" = 1 ] && echo "$phy_info" | grep -qE "[* ]+[6-7][0-9]{3}(\.0)? MHz"; then
+			bands="${bands:+$bands }6GHz"
+		fi
+
+		# Inference only for true tri-band Wi-Fi 7 (EHT = be standard)
+		if echo "$standards" | grep -qw "be" && [ "$has_2ghz" = 1 ]; then
+			# Wi-Fi 7 almost always tri-band if 2.4GHz present
+			[ "$has_5ghz" = 0 ] && bands="${bands:+$bands }5GHz"
+			[ "$has_6ghz" = 0 ] && bands="${bands:+$bands }6GHz"
+		fi
+
+		# Gentle 5GHz inference for Wi-Fi 6 if wide channels mentioned
+		if [ "$has_5ghz" = 0 ] && echo "$standards" | grep -qw "ax" && \
+		   echo "$phy_info" | grep -qiE "HE.*(80MHz|160MHz|80+80)"; then
+			bands="${bands:+$bands }5GHz"
 		fi
 
 		# Fallback standards ONLY if still empty
