@@ -262,7 +262,6 @@ wifi_chipset_detect() {
 				*"mt7628"*) chipset="MediaTek MT7628AN (integrated 2.4 GHz)" ;;
 				*"mt7621"*) chipset="MediaTek MT7621AN/AT (integrated 2.4 GHz)" ;;
 				*"mt7622"*) chipset="MediaTek MT7622 (integrated 2.4/5 GHz)" ;;
-				*"mt7620"*) chipset="MediaTek MT7620N (integrated 2.4 GHz)" ;;
 				*)          chipset="" ;;
 			esac
 
@@ -275,7 +274,6 @@ wifi_chipset_detect() {
 					*"mt7628"*) chipset="MediaTek MT7628AN (integrated 2.4 GHz)" ;;
 					*"mt7621"*) chipset="MediaTek MT7621AN/AT (integrated 2.4 GHz)" ;;
 					*"mt7622"*) chipset="MediaTek MT7622 (integrated 2.4/5 GHz)" ;;
-					*"mt7620"*) chipset="MediaTek MT7620N (integrated 2.4 GHz)" ;;
 					*)          chipset="Legacy MediaTek mt76_wmac SoC" ;;
 				esac
 			fi
