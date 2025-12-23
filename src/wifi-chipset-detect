@@ -14,6 +14,8 @@
 last_version="0.1.0~be7a"
 version="1.0.0~be7a"
 
+outputfile="/tmp/wifidetect"
+
 if [  -e "/tmp/wifi-chipset.debug" ]; then
 	rm "/tmp/wifi-chipset.debug"
 fi
@@ -56,31 +58,31 @@ wifi_chipset_detect() {
 	done
 
 	. /etc/openwrt_release 2>/dev/null
-	echo "{" > /tmp/wifidetect
-	echo "  \"System$labelmac\": {" >> /tmp/wifidetect
-	echo "    \"Distribution\": \"${DISTRIB_ID:-unknown}\"," >> /tmp/wifidetect
-	echo "    \"Release\": \"${DISTRIB_RELEASE:-unknown}\"," >> /tmp/wifidetect
-	echo "    \"Revision\": \"${DISTRIB_REVISION:-unknown}\"," >> /tmp/wifidetect
-	echo "    \"Target\": \"${DISTRIB_TARGET:-unknown}\"," >> /tmp/wifidetect
-	echo "    \"Architecture\": \"${DISTRIB_ARCH:-unknown}\"," >> /tmp/wifidetect
-	echo "    \"Description\": \"${DISTRIB_DESCRIPTION:-unknown}\"," >> /tmp/wifidetect
+	echo "{" > "$outputfile"
+	echo "  \"System$labelmac\": {" >> "$outputfile"
+	echo "    \"Distribution\": \"${DISTRIB_ID:-unknown}\"," >> "$outputfile"
+	echo "    \"Release\": \"${DISTRIB_RELEASE:-unknown}\"," >> "$outputfile"
+	echo "    \"Revision\": \"${DISTRIB_REVISION:-unknown}\"," >> "$outputfile"
+	echo "    \"Target\": \"${DISTRIB_TARGET:-unknown}\"," >> "$outputfile"
+	echo "    \"Architecture\": \"${DISTRIB_ARCH:-unknown}\"," >> "$outputfile"
+	echo "    \"Description\": \"${DISTRIB_DESCRIPTION:-unknown}\"," >> "$outputfile"
 
 	if [ -f /etc/board.json ]; then
 		device=$(grep -m1 '"name":' /etc/board.json | sed 's/.*"name": *"\([^"]*\)".*/\1/' 2>/dev/null)
 		if [ -n "$device" ] && ! echo "$device" | grep -Eqw "(WAN|LAN|ACT|LINK|DSL|WLAN|POWER|USB|WPS)"; then
-			echo "    \"Device\": \"$device\"," >> /tmp/wifidetect
+			echo "    \"Device\": \"$device\"," >> "$outputfile"
 		fi
 	elif [ -f /tmp/sysinfo/model ]; then
-		echo "    \"Device\": \"$(cat /tmp/sysinfo/model)\"," >> /tmp/wifidetect
+		echo "    \"Device\": \"$(cat /tmp/sysinfo/model)\"," >> "$outputfile"
 	elif [ -f /tmp/sysinfo/board_name ]; then
-		echo "    \"Device\": \"$(cat /tmp/sysinfo/board_name)\"," >> /tmp/wifidetect
+		echo "    \"Device\": \"$(cat /tmp/sysinfo/board_name)\"," >> "$outputfile"
 	else
-		echo "    \"Device\": \"unknown\"," >> /tmp/wifidetect
+		echo "    \"Device\": \"unknown\"," >> "$outputfile"
 	fi
 
 	write_debug "device"
 
-	echo "    \"phy\": {" >> /tmp/wifidetect
+	echo "    \"phy\": {" >> "$outputfile"
 
 	for dir in /sys/class/ieee80211/phy* /sys/class/ieee80211/wl*; do
 		[ -d "$dir" ] || continue
@@ -314,6 +316,92 @@ wifi_chipset_detect() {
 		# Last resort default
 		[ "$max_width" = "unknown" ] && max_width="20 MHz"
 
+		# Extended Wi-Fi features from "Supported extended features"
+		txqs=false
+		airtime_fairness=false
+		aql=false
+
+		extended_features=$(echo "$phy_info" | grep -A 20 "Supported extended features:" | grep -E "\[.*\]:.*")
+
+		if echo "$extended_features" | grep -q "\[ TXQS \]"; then
+			txqs=true
+		fi
+
+		if echo "$extended_features" | grep -q "\[ AIRTIME_FAIRNESS \]"; then
+			airtime_fairness=true
+		fi
+
+		if echo "$extended_features" | grep -q "\[ AQL \]"; then
+			aql=true
+		fi
+
+		# AQL runtime support check (ath11k exposes via debugfs even if not in "extended features")
+		aql_runtime_support=false
+
+		# Check if debugfs path for this phy exists and has aql_enable file
+		debugfs_path="/sys/kernel/debug/ieee80211/$name"
+		if [ -d "$debugfs_path" ] && [ -f "$debugfs_path/aql_enable" ]; then
+			aql_runtime_support=true
+		fi
+
+		# Antenna count (TX/RX from mask)
+		antennas="unknown"
+		ant_line=$(echo "$phy_info" | grep "Available Antennas: TX 0x" | head -1)
+		if [ -n "$ant_line" ]; then
+			tx_mask=$(echo "$ant_line" | sed -n 's/.*TX 0x\([0-9a-fA-F]\+\).*/\1/p' | tr 'A-F' 'a-f')
+			rx_mask=$(echo "$ant_line" | sed -n 's/.*RX 0x\([0-9a-fA-F]\+\).*/\1/p' | tr 'A-F' 'a-f')
+
+			bitcount() { 
+				local hex="$1"
+				printf "%d" "0x$hex" 2>/dev/null | awk '{c=0; n=$1; while(n>0){c+=n%2; n=int(n/2)} print c}' || echo 0
+			}
+
+			tx_count=$(bitcount "$tx_mask")
+			rx_count=$(bitcount "$rx_mask")
+
+			if [ "$tx_count" -gt 0 ] && [ "$rx_count" -gt 0 ]; then
+				antennas="${tx_count}x${rx_count}"
+			fi
+		fi
+
+		# Theoretical max throughput estimate (rough, Mbps) - reference only
+		theoretical_mbps="unknown"
+
+		# Base rate per stream (approx 80 MHz)
+		base_per_stream=0
+		if echo "$standards" | grep -q "ax"; then
+			base_per_stream=600   # Wi-Fi 6 HE
+		elif echo "$standards" | grep -q "ac"; then
+			base_per_stream=433   # Wi-Fi 5 VHT
+		elif echo "$standards" | grep -q "n"; then
+			base_per_stream=150   # Wi-Fi 4 HT
+		fi
+
+		# Width multiplier as integer (scaled by 100 for precision)
+		width_mult_scaled=100
+		case "$max_width" in
+			"160 MHz") width_mult_scaled=200 ;;
+			"80 MHz")  width_mult_scaled=100 ;;
+			"40 MHz")  width_mult_scaled=50 ;;
+			"20 MHz")  width_mult_scaled=25 ;;
+			*)         width_mult_scaled=100 ;;
+		esac
+
+		# Streams from MIMO (default 1 if missing or invalid)
+		streams=1
+		if echo "$mimo" | grep -qE "^[1-8]x[1-8]$"; then
+			streams=$(echo "$mimo" | cut -d'x' -f1)
+			# Ensure numeric
+			[ "$streams" -eq "$streams" ] 2>/dev/null || streams=1
+		fi
+
+		# Calculate only if base is valid (integer arithmetic)
+		if [ "$base_per_stream" -gt 0 ]; then
+			# (base * streams * (width_mult_scaled / 100))
+			temp=$(( base_per_stream * streams * width_mult_scaled ))
+			theoretical_mbps=$(( temp / 100 ))
+		fi
+
 		# 802.11s mesh support detection
 		mesh="no"
 		if echo "$phy_info" | grep -q "mesh point"; then
@@ -529,46 +617,52 @@ wifi_chipset_detect() {
 		fi
 
 		[ -z "$chipset" ] && chipset="unknown"
-		echo "      \"$name\": {" >> /tmp/wifidetect
-		echo "        \"Chipset\": \"$chipset\"," >> /tmp/wifidetect
-		echo "        \"Bands\": [" >> /tmp/wifidetect
+		echo "      \"$name\": {" >> "$outputfile"
+		echo "        \"Chipset\": \"$chipset\"," >> "$outputfile"
+		echo "        \"Bands\": [" >> "$outputfile"
 
 		for band in $bands; do
-			echo "          \"$band\"," >> /tmp/wifidetect
+			echo "          \"$band\"," >> "$outputfile"
 		done
 
-		sed -i '$ s/.$//' /tmp/wifidetect
-		echo "        ]," >> /tmp/wifidetect
+		sed -i '$ s/.$//' "$outputfile"
+		echo "        ]," >> "$outputfile"
 
-		echo "        \"Standards\": [" >> /tmp/wifidetect
+		echo "        \"Standards\": [" >> "$outputfile"
 
 		for standard in $standards; do
-			echo "          \"802.11$standard\"," >> /tmp/wifidetect
+			echo "          \"802.11$standard\"," >> "$outputfile"
 		done
 
-		sed -i '$ s/.$//' /tmp/wifidetect
-		echo "        ]," >> /tmp/wifidetect
+		sed -i '$ s/.$//' "$outputfile"
+		echo "        ]," >> "$outputfile"
 
 		if [ "$mesh" = "yes" ]; then
-			echo "        \"MeshPoint\": \"802.11s\"," >> /tmp/wifidetect
+			echo "        \"MeshPoint\": \"802.11s\"," >> "$outputfile"
 		else
-			echo "        \"MeshPoint\": \"N/A\"," >> /tmp/wifidetect
+			echo "        \"MeshPoint\": \"N/A\"," >> "$outputfile"
 		fi
 
-		echo "        \"Wi-FiGeneration\": \"$wifigen\"," >> /tmp/wifidetect
-		echo "        \"MIMO\": \"$mimo\"," >> /tmp/wifidetect
-		echo "        \"MaxChannelWidth\": \"$max_width\"," >> /tmp/wifidetect
-		echo "        \"ChannelWidthCap\": $channel_width_cap," >> /tmp/wifidetect
-		echo "        \"Driver\": \"$driver\"" >> /tmp/wifidetect
-		echo "      }," >> /tmp/wifidetect
+		echo "        \"Wi-FiGeneration\": \"$wifigen\"," >> "$outputfile"
+		echo "        \"MIMO\": \"$mimo\"," >> "$outputfile"
+		echo "        \"MaxChannelWidth\": \"$max_width\"," >> "$outputfile"
+		echo "        \"ChannelWidthCap\": $channel_width_cap," >> "$outputfile"
+		echo "        \"Antennas\": \"$antennas\"," >> "$outputfile"
+		echo "        \"TheoreticalMaxMbps\": \"$theoretical_mbps\"," >> "$outputfile"
+		echo "        \"TXQS\": $txqs," >> "$outputfile"
+		echo "        \"AIRTIME_FAIRNESS\": $airtime_fairness," >> "$outputfile"
+		echo "        \"AQL_Extended\": $aql," >> "$outputfile"
+		echo "        \"AQL_Runtime\": $aql_runtime_support," >> "$outputfile"
+		echo "        \"Driver\": \"$driver\"" >> "$outputfile"
+		echo "      }," >> "$outputfile"
 	done
 
-	sed -i '$ s/.$//' /tmp/wifidetect
-	echo "    }" >> /tmp/wifidetect
-	echo "  }" >> /tmp/wifidetect
-	echo "}" >> /tmp/wifidetect
+	sed -i '$ s/.$//' "$outputfile"
+	echo "    }" >> "$outputfile"
+	echo "  }" >> "$outputfile"
+	echo "}" >> "$outputfile"
 }
 
 wifi_chipset_detect
-cat /tmp/wifidetect
+cat "$outputfile"
 
