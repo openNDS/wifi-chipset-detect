@@ -184,12 +184,135 @@ wifi_chipset_detect() {
 			write_debug "fallback_standards"
 		fi
 
+		# Filter out invalid standards on 2.4 GHz (802.11ac is 5 GHz only)
+		if echo "$bands" | grep -q "2.4GHz"; then
+			standards=$(echo "$standards" | sed 's/ac//g' | sed 's/  */ /g' | sed 's/^ //;s/ $//')
+		fi
+
 		# Final defaults
 		[ -z "$bands" ] && bands="unknown"
 		[ -z "$standards" ] && standards="legacy"
 
 		write_debug "bands"
 		write_debug "standards"
+
+		# Derive friendly Wi-Fi generation
+		wifigen="Legacy"
+		if echo "$standards" | grep -qw "be"; then
+			wifigen="Wi-Fi 7"
+		elif echo "$standards" | grep -qw "ax"; then
+			if echo "$bands" | grep -qw "6GHz"; then
+				wifigen="Wi-Fi 6E"
+			else
+				wifigen="Wi-Fi 6"
+			fi
+		elif echo "$standards" | grep -qw "ac"; then
+			wifigen="Wi-Fi 5"
+		elif echo "$standards" | grep -qw "n"; then
+			wifigen="Wi-Fi 4"
+		fi
+
+		write_debug "wifigen"
+
+		# MIMO / Max spatial streams detection
+		mimo="unknown"
+		max_nss=0
+
+		# Helper to update max NSS
+		update_max_nss() {
+			local nss="$1"
+			[ -n "$nss" ] && [ "$nss" -gt "$max_nss" ] && max_nss="$nss"
+		}
+
+		# HT (802.11n) - MCS max index to NSS
+		ht_mcs=$(echo "$phy_info" | grep "HT TX/RX MCS rate indexes supported" | head -1 | sed -n 's/.*: 0-\([0-9]\+\).*/\1/p')
+		if [ -n "$ht_mcs" ]; then
+			if [ "$ht_mcs" -le 7 ]; then update_max_nss 1
+			elif [ "$ht_mcs" -le 15 ]; then update_max_nss 2
+			elif [ "$ht_mcs" -le 23 ]; then update_max_nss 3
+			elif [ "$ht_mcs" -le 31 ]; then update_max_nss 4
+			elif [ "$ht_mcs" -le 39 ]; then update_max_nss 5
+			elif [ "$ht_mcs" -le 47 ]; then update_max_nss 6
+			elif [ "$ht_mcs" -le 55 ]; then update_max_nss 7
+			elif [ "$ht_mcs" -le 63 ]; then update_max_nss 8
+			fi
+		fi
+
+		# VHT / HE / EHT - highest supported streams (only match "MCS" lines, skip "not supported")
+		for section in "VHT RX MCS" "HE RX MCS" "EHT RX MCS"; do
+			if echo "$phy_info" | grep -q "$section"; then
+				nss_list=$(echo "$phy_info" | grep -A 10 "$section" | \
+						   grep -E "[1-8] streams: MCS" | \
+						   sed 's/.*\([1-8]\) streams: MCS.*/\1/' | \
+						   sort -nr | head -1)
+				update_max_nss "$nss_list"
+			fi
+		done
+
+		# Fallback: antenna bits if nothing else
+		if [ "$max_nss" -eq 0 ] && echo "$phy_info" | grep -q "Available Antennas: TX 0x"; then
+			ant_hex=$(echo "$phy_info" | grep "Available Antennas: TX 0x" | sed 's/.*TX 0x\([0-9a-fA-F]\+\).*/\1/' | tr 'A-F' 'a-f')
+			ant_count=$(printf "%d" "0x$ant_hex" | awk '{popcount=0; n=$1; while(n>0){popcount += n%2; n=int(n/2)} print popcount}')
+			update_max_nss "$ant_count"
+		fi
+
+		# Final MIMO string
+		if [ "$max_nss" -ge 1 ]; then
+			mimo="${max_nss}x${max_nss}"
+		fi
+
+		# Max channel width detection + ChannelWidthCap flag
+		max_width="unknown"
+		channel_width_cap=false
+
+		# Normalize driver name
+		driver_norm=$(echo "$driver" | tr -d '[:space:]' | tr 'A-Z' 'a-z')
+
+		# Early cap for known chipsets/drivers with practical 80 MHz limit on 5 GHz
+		# (reports 160 MHz but unstable/unusable in practice)
+		if echo "$driver_norm" | grep -qE "mt7615e|mt7613|mt7663|mt76.*|ath9k|ath10k|iwlwifi"; then
+			if echo "$bands" | grep -q "5GHz"; then
+				max_width="80 MHz"
+				channel_width_cap=true
+			fi
+		fi
+
+		# If no cap applied, use normal detection
+		if [ "$max_width" = "unknown" ]; then
+			# Primary: radar detect widths
+			radar_line=$(echo "$phy_info" | grep -i "radar detect widths:" | head -1)
+			if [ -n "$radar_line" ]; then
+				largest=$(echo "$radar_line" | grep -oE "(160|80\+80|80|40|20)" | sort -nr | head -1)
+				case "$largest" in
+					160)     max_width="160 MHz" ;;
+					"80+80") max_width="80+80 MHz" ;;
+					80)      max_width="80 MHz" ;;
+					40)      max_width="40 MHz" ;;
+					20)      max_width="20 MHz" ;;
+				esac
+			fi
+
+			# Fallback: capabilities
+			if [ "$max_width" = "unknown" ]; then
+				if echo "$phy_info" | grep -qiE "160 MHz|HE.*160|EHT.*160|VHT.*160"; then
+					max_width="160 MHz"
+				elif echo "$phy_info" | grep -qiE "80\+80|80 MHz|HE.*80"; then
+					max_width="80 MHz"
+				elif echo "$phy_info" | grep -qiE "HT40|40 MHz"; then
+					max_width="40 MHz"
+				else
+					max_width="20 MHz"
+				fi
+			fi
+		fi
+
+		# Absolute 2.4 GHz safety cap (never allow >40 MHz)
+		if echo "$bands" | grep -q "2.4GHz" && [ "$max_width" != "20 MHz" ] && [ "$max_width" != "40 MHz" ]; then
+			max_width="40 MHz"
+		fi
+
+		# Last resort default
+		[ "$max_width" = "unknown" ] && max_width="20 MHz"
 
 		# 802.11s mesh support detection
 		mesh="no"
@@ -432,6 +555,10 @@ wifi_chipset_detect() {
 			echo "        \"MeshPoint\": \"N/A\"," >> /tmp/wifidetect
 		fi
 
+		echo "        \"Wi-FiGeneration\": \"$wifigen\"," >> /tmp/wifidetect
+		echo "        \"MIMO\": \"$mimo\"," >> /tmp/wifidetect
+		echo "        \"MaxChannelWidth\": \"$max_width\"," >> /tmp/wifidetect
+		echo "        \"ChannelWidthCap\": $channel_width_cap," >> /tmp/wifidetect
 		echo "        \"Driver\": \"$driver\"" >> /tmp/wifidetect
 		echo "      }," >> /tmp/wifidetect
 	done
@@ -445,9 +572,3 @@ wifi_chipset_detect() {
 wifi_chipset_detect
 cat /tmp/wifidetect
 
-
-				if echo "$band_info" | grep -q "Band ${next_band}:"; then
-					band_info=$(echo "$band_info" | sed '$d')
-				fi
-
-				# Bands (unchanged)
