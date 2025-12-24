@@ -14,19 +14,47 @@ The thread can be seen here:
 
 https://forum.openwrt.org/t/wifi-chipset-driver-detection-script-works-with-radios-enabled-or-disabled-please-show-your-test-outputs-nov-2025
 
+## Key Fields Explained
+
+The script outputs detailed information about each wireless PHY (radio) in JSON format. Here's what the most important fields mean:
+
+| Field                  | Description                                                                 | Example Value                  | Notes / Special Cases                                                                 |
+|------------------------|-----------------------------------------------------------------------------|--------------------------------|---------------------------------------------------------------------------------------|
+| Bands                  | Supported frequency bands                                                   | `["2.4GHz", "5GHz"]`           | May include "6GHz" on Wi-Fi 6E/7 hardware                                              |
+| Standards              | Detected 802.11 standards (filtered: no "ac" on 2.4 GHz)                    | `["802.11n", "802.11ax"]`      | "ac" is 5 GHz only; automatically removed on 2.4 GHz PHYs                            |
+| Wi-FiGeneration        | Friendly Wi-Fi generation name                                              | `"Wi-Fi 6"`                    | Derived from standards (e.g., "Wi-Fi 6" if ax present, "Wi-Fi 7" if be)               |
+| MIMO                   | Spatial streams (from MCS rates)                                            | `"2x2"`                        | Number of transmit/receive chains                                                     |
+| Antennas               | Physical antenna count (from TX/RX mask)                                    | `"2x2"`                        | Usually matches MIMO, but may differ due to antenna config                            |
+| MaxChannelWidth        | Practical maximum channel width (capped where known unstable)               | `"80 MHz"`                     | Realistic limit — may be lower than driver-reported value                             |
+| ChannelWidthCap        | `true` if we applied a practical limit (e.g. stability on mt7615e)          | `true` / `false`               | Indicates when the value was adjusted for real-world usability                        |
+| TXQS                   | FQ-CoDel-enabled intermediate TXQs support                                  | `true` / `false`               | Helps reduce bufferbloat and latency under load                                       |
+| AIRTIME_FAIRNESS       | Airtime fairness scheduling support                                         | `true` / `false`               | Prevents slow clients from monopolizing airtime; improves mixed-client performance   |
+| AQL_Extended           | Airtime Queue Limits (AQL) as a built-in extended feature                   | `true` / `false`               | From `iw phy info` — always-on if true                                                |
+| AQL_Runtime            | AQL can be enabled at runtime (via debugfs/sysfs)                           | `true` / `false`               | Useful for mesh11sd or custom QoS scripts; common on ath11k/mt76                     |
+| TheoreticalMaxMbps     | Rough theoretical maximum throughput (upper bound, Mbps)                   | `2400`                         | Reference only — real-world is 50–70% lower due to overhead, interference, etc.       |
+| Driver                 | Kernel driver in use                                                        | `"ath11k"`                     | Helps identify chipset family                                                         |
+
+**Important notes**:
+
+- `ChannelWidthCap: true` means the reported width was adjusted downward for stability (e.g., mt7615e reports 160 MHz but is practically limited to 80 MHz).
+- `TheoreticalMaxMbps` is a rough upper bound based on MIMO streams, channel width, and standard — do **not** expect real-world speeds to reach this value.
+- All values are detected from `iw phy <name> info` and debugfs/sysfs — reliable even when radios are disabled.
+
+Feel free to suggest improvements or report issues here.
+
 ### Example outputs ###
 
 *Detect installed chipsets and drivers*:
 ```
-root@meshnode-256d:~# wifi-chipset-detect
+root@meshnode-2a52:/tmp# wifi-chipset-detect
 {
-  "System@94:83:c4:5c:25:6d": {
+  "System@94:83:c4:5c:2a:51": {
     "Distribution": "OpenWrt",
     "Release": "SNAPSHOT",
-    "Revision": "r31119-fe27cce1ec",
+    "Revision": "r29091-7aa3dfdbda",
     "Target": "qualcommax/ipq60xx",
     "Architecture": "aarch64_cortex-a53",
-    "Description": "OpenWrt SNAPSHOT r31119-fe27cce1ec",
+    "Description": "OpenWrt SNAPSHOT r29091-7aa3dfdbda",
     "Device": "GL.iNet GL-AXT1800",
     "phy": {
       "phy0": {
@@ -40,6 +68,16 @@ root@meshnode-256d:~# wifi-chipset-detect
           "802.11ax"
         ],
         "MeshPoint": "802.11s",
+        "Wi-FiGeneration": "Wi-Fi 6",
+        "MIMO": "2x2",
+        "MaxChannelWidth": "160 MHz",
+        "ChannelWidthCap": false,
+        "Antennas": "2x2",
+        "TheoreticalMaxMbps": "2400",
+        "TXQS": true,
+        "AIRTIME_FAIRNESS": false,
+        "AQL_Extended": false,
+        "AQL_Runtime": true,
         "Driver": "ath11k"
       },
       "phy1": {
@@ -52,12 +90,22 @@ root@meshnode-256d:~# wifi-chipset-detect
           "802.11ax"
         ],
         "MeshPoint": "802.11s",
+        "Wi-FiGeneration": "Wi-Fi 6",
+        "MIMO": "2x2",
+        "MaxChannelWidth": "40 MHz",
+        "ChannelWidthCap": false,
+        "Antennas": "2x2",
+        "TheoreticalMaxMbps": "600",
+        "TXQS": true,
+        "AIRTIME_FAIRNESS": false,
+        "AQL_Extended": false,
+        "AQL_Runtime": true,
         "Driver": "ath11k"
       }
     }
   }
 }
-root@meshnode-256d:~# 
+root@meshnode-2a52:/tmp# 
 
 ```
 ***Show the version*:***
@@ -90,6 +138,16 @@ root@meshnode-8ecb:~# wifi-chipset-detect debug
           "802.11ax"
         ],
         "MeshPoint": "802.11s",
+        "Wi-FiGeneration": "Wi-Fi 6",
+        "MIMO": "4x4",
+        "MaxChannelWidth": "40 MHz",
+        "ChannelWidthCap": false,
+        "Antennas": "4x4",
+        "TheoreticalMaxMbps": "1200",
+        "TXQS": true,
+        "AIRTIME_FAIRNESS": true,
+        "AQL_Extended": true,
+        "AQL_Runtime": true,
         "Driver": "mt798x-wmac"
       },
       "phy1": {
@@ -103,22 +161,32 @@ root@meshnode-8ecb:~# wifi-chipset-detect debug
           "802.11ax"
         ],
         "MeshPoint": "802.11s",
+        "Wi-FiGeneration": "Wi-Fi 6",
+        "MIMO": "4x4",
+        "MaxChannelWidth": "160 MHz",
+        "ChannelWidthCap": false,
+        "Antennas": "4x4",
+        "TheoreticalMaxMbps": "4800",
+        "TXQS": true,
+        "AIRTIME_FAIRNESS": true,
+        "AQL_Extended": true,
+        "AQL_Runtime": true,
         "Driver": "mt798x-wmac"
       }
     }
   }
 }
-root@meshnode-8ecb:~# 
 root@meshnode-8ecb:~# cat /tmp/wifi-chipset.debug
-date_ver="Sun Dec 21 19:22:52 GMT 2025 - wifi-chipset-detect Version 1.0.0"
+date_ver="Wed Dec 24 00:24:57 GMT 2025 - wifi-chipset-detect Version 1.0.0~be7a"
 labelmac="94:83:c4:a2:8e:c9"
 device="GL.iNet GL-MT6000"
 phyname="phy0"
 default_driver="mt798x-wmac"
 per_band_detection_bands="2.4GHz"
-per_band_detection_standards="n ax"
+per_band_detection_standards="n ac ax"
 bands="2.4GHz"
 standards="n ax"
+wifigen="Wi-Fi 6"
 mesh="yes"
 default_chipset_detect=""
 filogic_modalias="of:NwifiT%28null%29Cmediatek,mt7986-wmac"
@@ -129,12 +197,12 @@ per_band_detection_bands="5GHz"
 per_band_detection_standards="n ac ax"
 bands="5GHz"
 standards="n ac ax"
+wifigen="Wi-Fi 6"
 mesh="yes"
 default_chipset_detect=""
 filogic_modalias="of:NwifiT%28null%29Cmediatek,mt7986-wmac"
 filogic_chipset="MediaTek Filogic 830/810/880 %28MT798x integrated WiFi%29"
 root@meshnode-8ecb:~# 
-
 
 ```
 
