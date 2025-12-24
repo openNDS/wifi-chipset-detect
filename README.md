@@ -36,9 +36,17 @@ The script outputs detailed information about each wireless PHY (radio) in JSON 
 
 **Important notes**:
 
-- `ChannelWidthCap: true` means the reported width was adjusted downward for stability (e.g., mt7615e reports 160 MHz but is practically limited to 80 MHz).
-- `TheoreticalMaxMbps` is a rough upper bound based on MIMO streams, channel width, and standard — do **not** expect real-world speeds to reach this value.
-- All values are detected from `iw phy <name> info` and debugfs/sysfs — reliable even when radios are disabled.
+- **AIRTIME_FAIRNESS**:  
+ ***Commonly true*** on MediaTek drivers (mt76, mt79xx series) — fully supported at the driver level.  
+ ***Usually false*** on Qualcomm drivers (ath10k, ath11k) — the feature is **not exposed** in the open-source driver, even though the underlying firmware may implement some form of fairness internally. This is a known limitation of the current ath10k/ath11k implementations in OpenWrt.
+- **AQL_Runtime**:  
+ ***true*** on ath9k, ath10k, ath11k, and most mt76/mt79xx drivers — AQL can be manually enabled/tuned via debugfs/sysfs (great for mesh11sd or custom QoS).  
+ ***false*** on very old kernels or drivers without the required backport.
+- **ChannelWidthCap**:  
+ ***true*** means the reported width was adjusted downward for stability (e.g., mt7615e reports 160 MHz but is limited in practice to 80 MHz).
+- **TheoreticalMaxMbps**:  
+ This is a rough upper bound based on MIMO streams, channel width, and standards. Real-world achieved speeds are unlikely to reach this value.
+- **All values are detected** from `iw phy <phyname> info` and debugfs/sysfs — reliable even when radios are disabled.
 
 Feel free to suggest improvements or report issues here.
 
