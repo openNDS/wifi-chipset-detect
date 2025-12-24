@@ -186,12 +186,12 @@ wifi_chipset_detect() {
 			write_debug "fallback_standards"
 		fi
 
-		# Final standards: deduplicated union of per-band and fallback
+		# Final standards: deduplicated union of per-band and fallback detection
 		standards=$(echo "$per_band_detection_standards $standards" | tr ' ' '\n' | sort -u | tr '\n' ' ' | sed 's/^ //;s/ $//')
 		[ -z "$standards" ] && standards="legacy"
 
-		# Filter out invalid standards on 2.4 GHz (802.11ac is 5 GHz only)
-		if echo "$bands" | grep -q "2.4GHz"; then
+		# Filter out invalid "ac" on pure 2.4 GHz PHYs (keep for dual-band)
+		if echo "$bands" | grep -q "2.4GHz" && ! echo "$bands" | grep -q "5GHz"; then
 			standards=$(echo "$standards" | sed 's/ac//g' | sed 's/  */ /g' | sed 's/^ //;s/ $//')
 		fi
 
@@ -317,9 +317,11 @@ wifi_chipset_detect() {
 			fi
 		fi
 
-		# Absolute 2.4 GHz safety cap (never allow >40 MHz)
-		if echo "$bands" | grep -q "2.4GHz" && [ "$max_width" != "20 MHz" ] && [ "$max_width" != "40 MHz" ]; then
-			max_width="40 MHz"
+		# Safety cap: limit 2.4 GHz to 40 MHz max, but only if no higher width from 5/6 GHz
+		if echo "$bands" | grep -q "2.4GHz" && ! echo "$bands" | grep -qE "5GHz|6GHz"; then
+			if [ "$max_width" != "20 MHz" ] && [ "$max_width" != "40 MHz" ]; then
+				max_width="40 MHz"
+			fi
 		fi
 
 		# Last resort default
