@@ -186,6 +186,10 @@ wifi_chipset_detect() {
 			write_debug "fallback_standards"
 		fi
 
+		# Final standards: deduplicated union of per-band and fallback
+		standards=$(echo "$per_band_detection_standards $standards" | tr ' ' '\n' | sort -u | tr '\n' ' ' | sed 's/^ //;s/ $//')
+		[ -z "$standards" ] && standards="legacy"
+
 		# Filter out invalid standards on 2.4 GHz (802.11ac is 5 GHz only)
 		if echo "$bands" | grep -q "2.4GHz"; then
 			standards=$(echo "$standards" | sed 's/ac//g' | sed 's/  */ /g' | sed 's/^ //;s/ $//')
@@ -294,6 +298,11 @@ wifi_chipset_detect() {
 				esac
 			fi
 
+			# Special case for ath10k dual-band cards (QCA9984 etc.) - practical max 80 MHz on 5 GHz
+			if echo "$driver" | grep -qi "ath10k" && echo "$bands" | grep -q "5GHz"; then
+				max_width="80 MHz"
+			fi
+
 			# Fallback: capabilities
 			if [ "$max_width" = "unknown" ]; then
 				if echo "$phy_info" | grep -qiE "160 MHz|HE.*160|EHT.*160|VHT.*160"; then
@@ -364,20 +373,25 @@ wifi_chipset_detect() {
 			fi
 		fi
 
+		# Fallback: if antenna mask missing (common on rt2800, some mt76), use MIMO value
+		if [ "$antennas" = "unknown" ] && [ "$mimo" != "unknown" ]; then
+			antennas="$mimo"
+		fi
+
 		# Theoretical max throughput estimate (rough, Mbps) - reference only
 		theoretical_mbps="unknown"
 
-		# Base rate per stream (approx 80 MHz)
+		# Base rate per stream (approx at 80 MHz)
 		base_per_stream=0
 		if echo "$standards" | grep -q "ax"; then
 			base_per_stream=600   # Wi-Fi 6 HE
 		elif echo "$standards" | grep -q "ac"; then
-			base_per_stream=433   # Wi-Fi 5 VHT
+			base_per_stream=433   # Wi-Fi 5 VHT @ 80 MHz
 		elif echo "$standards" | grep -q "n"; then
-			base_per_stream=150   # Wi-Fi 4 HT
+			base_per_stream=300   # Wi-Fi 4 HT @ 40 MHz (N300 class)
 		fi
 
-		# Width multiplier as integer (scaled by 100 for precision)
+		# Width multiplier scaled by 100 (integer only)
 		width_mult_scaled=100
 		case "$max_width" in
 			"160 MHz") width_mult_scaled=200 ;;
@@ -387,17 +401,15 @@ wifi_chipset_detect() {
 			*)         width_mult_scaled=100 ;;
 		esac
 
-		# Streams from MIMO (default 1 if missing or invalid)
+		# Streams from MIMO (default 1)
 		streams=1
 		if echo "$mimo" | grep -qE "^[1-8]x[1-8]$"; then
 			streams=$(echo "$mimo" | cut -d'x' -f1)
-			# Ensure numeric
 			[ "$streams" -eq "$streams" ] 2>/dev/null || streams=1
 		fi
 
-		# Calculate only if base is valid (integer arithmetic)
+		# Calculate using scaled integer math
 		if [ "$base_per_stream" -gt 0 ]; then
-			# (base * streams * (width_mult_scaled / 100))
 			temp=$(( base_per_stream * streams * width_mult_scaled ))
 			theoretical_mbps=$(( temp / 100 ))
 		fi
