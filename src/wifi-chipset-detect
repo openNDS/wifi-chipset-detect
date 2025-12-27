@@ -274,21 +274,21 @@ wifi_chipset_detect() {
 		# Normalize driver name
 		driver_norm=$(echo "$driver" | tr -d '[:space:]' | tr 'A-Z' 'a-z')
 
-		# Early cap for known chipsets/drivers with practical 80 MHz limit on 5 GHz
-		# (reports 160 MHz but unstable/unusable in practice)
-		if echo "$driver_norm" | grep -qE "mt7615e|mt7613|mt7663|mt76.*|ath9k|ath10k|iwlwifi"; then
+		# 1. Practical cap for known over-reporting drivers (mt7615e family reports 160 MHz but unstable)
+		if echo "$driver_norm" | grep -qE "mt7615e|mt7613|mt7663|mt76.*"; then
 			if echo "$bands" | grep -q "5GHz"; then
 				max_width="80 MHz"
 				channel_width_cap=true
 			fi
 		fi
 
-		# If no cap applied, use normal detection
+		# 2. If no cap was applied above, use normal detection
 		if [ "$max_width" = "unknown" ]; then
-			# Primary: radar detect widths
+			# Primary: radar detect widths — robust extraction
 			radar_line=$(echo "$phy_info" | grep -i "radar detect widths:" | head -1)
 			if [ -n "$radar_line" ]; then
-				largest=$(echo "$radar_line" | grep -oE "(160|80\+80|80|40|20)" | sort -nr | head -1)
+				# Extract numbers, ignore text/parentheses
+				largest=$(echo "$radar_line" | grep -oE "160|80\+80|80|40|20" | sort -nr | head -1)
 				case "$largest" in
 					160)     max_width="160 MHz" ;;
 					"80+80") max_width="80+80 MHz" ;;
@@ -298,16 +298,11 @@ wifi_chipset_detect() {
 				esac
 			fi
 
-			# Special case for ath10k dual-band cards (QCA9984 etc.) - practical max 80 MHz on 5 GHz
-			if echo "$driver" | grep -qi "ath10k" && echo "$bands" | grep -q "5GHz"; then
-				max_width="80 MHz"
-			fi
-
-			# Fallback: capabilities
+			# Fallback: explicit capability mentions (for when radar line is missing)
 			if [ "$max_width" = "unknown" ]; then
 				if echo "$phy_info" | grep -qiE "160 MHz|HE.*160|EHT.*160|VHT.*160"; then
 					max_width="160 MHz"
-				elif echo "$phy_info" | grep -qiE "80\+80|80 MHz|HE.*80"; then
+				elif echo "$phy_info" | grep -qiE "80\+80|80 MHz|HE.*80|VHT.*80"; then
 					max_width="80 MHz"
 				elif echo "$phy_info" | grep -qiE "HT40|40 MHz"; then
 					max_width="40 MHz"
@@ -317,7 +312,7 @@ wifi_chipset_detect() {
 			fi
 		fi
 
-		# Safety cap: limit 2.4 GHz to 40 MHz max, but only if no higher width from 5/6 GHz
+		# 3. Safety cap: limit pure 2.4 GHz PHYs to 40 MHz max
 		if echo "$bands" | grep -q "2.4GHz" && ! echo "$bands" | grep -qE "5GHz|6GHz"; then
 			if [ "$max_width" != "20 MHz" ] && [ "$max_width" != "40 MHz" ]; then
 				max_width="40 MHz"
