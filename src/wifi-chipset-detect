@@ -286,10 +286,13 @@ wifi_chipset_detect() {
 		if [ "$max_width" = "unknown" ]; then
 			# Primary: radar detect widths — robust extraction
 			radar_line=$(echo "$phy_info" | grep -i "radar detect widths:" | head -1)
+
 			if [ -n "$radar_line" ]; then
-				# Extract numbers, ignore text/parentheses
-				largest=$(echo "$radar_line" | grep -oE "160|80\+80|80|40|20" | sort -nr | head -1)
+				# Extract the highest supported width, including Wi-Fi 7 320 MHz
+				largest=$(echo "$radar_line" | grep -oE "320|240|160|80\+80|80|40|20" | sort -nr | head -1)
 				case "$largest" in
+					320)     max_width="320 MHz" ;;
+					240)     max_width="240 MHz" ;;
 					160)     max_width="160 MHz" ;;
 					"80+80") max_width="80+80 MHz" ;;
 					80)      max_width="80 MHz" ;;
@@ -297,10 +300,11 @@ wifi_chipset_detect() {
 					20)      max_width="20 MHz" ;;
 				esac
 			fi
-
 			# Fallback: explicit capability mentions (for when radar line is missing)
 			if [ "$max_width" = "unknown" ]; then
-				if echo "$phy_info" | grep -qiE "160 MHz|HE.*160|EHT.*160|VHT.*160"; then
+				if echo "$phy_info" | grep -qiE "320 MHz|EHT.*320"; then
+					max_width="320 MHz"
+				elif echo "$phy_info" | grep -qiE "160 MHz|HE.*160|EHT.*160|VHT.*160"; then
 					max_width="160 MHz"
 				elif echo "$phy_info" | grep -qiE "80\+80|80 MHz|HE.*80|VHT.*80"; then
 					max_width="80 MHz"
