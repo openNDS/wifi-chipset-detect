@@ -379,26 +379,30 @@ wifi_chipset_detect() {
 			antennas="$mimo"
 		fi
 
-		# Theoretical max throughput estimate (rough, Mbps) - reference only
+		# Theoretical max throughput per PHY (rough, Mbps) - reference only
 		theoretical_mbps="unknown"
 
-		# Base rate per stream (approx at 80 MHz)
+		# Base rate per stream at 40 MHz (realistic, no marketing inflation)
 		base_per_stream=0
-		if echo "$standards" | grep -q "ax"; then
-			base_per_stream=600   # Wi-Fi 6 HE
+		if echo "$standards" | grep -q "be"; then
+			base_per_stream=360    # Wi-Fi 7 EHT @ 40 MHz per stream (realistic, ~20% over Wi-Fi 6)
+		elif echo "$standards" | grep -q "ax"; then
+			base_per_stream=300    # Wi-Fi 6 HE @ 40 MHz per stream
 		elif echo "$standards" | grep -q "ac"; then
-			base_per_stream=433   # Wi-Fi 5 VHT @ 80 MHz
+			base_per_stream=217    # Wi-Fi 5 VHT @ 40 MHz per stream (~433 @ 80 MHz scaled down)
 		elif echo "$standards" | grep -q "n"; then
-			base_per_stream=300   # Wi-Fi 4 HT @ 40 MHz (N300 class)
+			base_per_stream=150    # Wi-Fi 4 HT @ 40 MHz per stream
 		fi
 
-		# Width multiplier scaled by 100 (integer only)
+		# Width multiplier scaled by 100 (relative to 40 MHz = 1x)
 		width_mult_scaled=100
 		case "$max_width" in
-			"160 MHz") width_mult_scaled=200 ;;
-			"80 MHz")  width_mult_scaled=100 ;;
-			"40 MHz")  width_mult_scaled=50 ;;
-			"20 MHz")  width_mult_scaled=25 ;;
+			"320 MHz") width_mult_scaled=800 ;;
+			"240 MHz") width_mult_scaled=600 ;;
+			"160 MHz") width_mult_scaled=400 ;;
+			"80 MHz")  width_mult_scaled=200 ;;
+			"40 MHz")  width_mult_scaled=100 ;;
+			"20 MHz")  width_mult_scaled=50 ;;
 			*)         width_mult_scaled=100 ;;
 		esac
 
@@ -409,10 +413,28 @@ wifi_chipset_detect() {
 			[ "$streams" -eq "$streams" ] 2>/dev/null || streams=1
 		fi
 
-		# Calculate using scaled integer math
+		# Calculate per-PHY theoretical throughput
 		if [ "$base_per_stream" -gt 0 ]; then
 			temp=$(( base_per_stream * streams * width_mult_scaled ))
 			theoretical_mbps=$(( temp / 100 ))
+		fi
+
+		# AggregatedMaxMbps for Wi-Fi 7 MLO (realistic sum of per-band estimates)
+		aggregated_mbps="unknown"
+		if echo "$standards" | grep -q "be"; then
+			# Per-band per-stream rates (consistent scaling from 40 MHz base)
+			rate_24_per_stream=360   # 2.4 GHz @ 40 MHz
+			rate_5_per_stream=1440   # 5 GHz @ 160 MHz (4x)
+			rate_6_per_stream=2880   # 6 GHz @ 320 MHz (8x)
+
+			total_agg=0
+			if echo "$bands" | grep -q "2.4GHz"; then total_agg=$(( total_agg + rate_24_per_stream * streams )); fi
+			if echo "$bands" | grep -q "5GHz"; then total_agg=$(( total_agg + rate_5_per_stream * streams )); fi
+			if echo "$bands" | grep -q "6GHz"; then total_agg=$(( total_agg + rate_6_per_stream * streams )); fi
+
+			if [ "$total_agg" -gt 0 ]; then
+				aggregated_mbps="$total_agg"
+			fi
 		fi
 
 		# 802.11s mesh support detection
@@ -662,6 +684,11 @@ wifi_chipset_detect() {
 		echo "        \"ChannelWidthCap\": $channel_width_cap," >> "$outputfile"
 		echo "        \"Antennas\": \"$antennas\"," >> "$outputfile"
 		echo "        \"TheoreticalMaxMbps\": \"$theoretical_mbps\"," >> "$outputfile"
+
+		if echo "$standards" | grep -q "be"; then
+			echo "        \"Aggregated_MLO_MaxMbps\": \"$aggregated_mbps\"," >> "$outputfile"
+		fi
+
 		echo "        \"TXQS\": $txqs," >> "$outputfile"
 		echo "        \"AIRTIME_FAIRNESS\": $airtime_fairness," >> "$outputfile"
 		echo "        \"AQL_Extended\": $aql," >> "$outputfile"
