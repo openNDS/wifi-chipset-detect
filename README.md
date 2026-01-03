@@ -31,7 +31,8 @@ The script outputs detailed information about each wireless PHY (radio) in JSON 
 | AIRTIME_FAIRNESS       | Airtime fairness scheduling support                                         | `true` / `false`               | Prevents slow clients from monopolizing airtime; improves mixed-client performance   |
 | AQL_Extended           | Airtime Queue Limits (AQL) as a built-in extended feature                   | `true` / `false`               | From `iw phy info` — always-on if true                                                |
 | AQL_Runtime            | AQL can be enabled at runtime (via debugfs/sysfs)                           | `true` / `false`               | Useful for mesh11sd or custom QoS scripts; common on ath11k/mt76                     |
-| TheoreticalMaxMbps     | Rough theoretical maximum throughput (upper bound, Mbps)                   | `2400`                         | Reference only — real-world is 50–70% lower due to overhead, interference, etc.       |
+| TheoreticalMaxMbps     | Rough theoretical maximum throughput per PHY (upper bound, Mbps)                   | `2400`                         | Reference only — real-world could be up to 50–70% lower due to overhead, interference, etc.       |
+| Aggregated_MLO_MaxMbps     | Aggregated Multi Link Operation maximum rate Mbps (802.11be onwards) | `14040`                         | Reference only — real-world could be up to 50–70% lower due to overhead, interference, etc.       |
 | Driver                 | Kernel driver in use                                                        | `"ath11k"`                     | Helps identify chipset family                                                         |
 
 **Important notes**:
@@ -46,6 +47,8 @@ The script outputs detailed information about each wireless PHY (radio) in JSON 
  ***true*** means the reported width was adjusted downward for stability (e.g., mt7615e reports 160 MHz but is limited in practice to 80 MHz).
 - **TheoreticalMaxMbps**:  
  This is a rough upper bound based on MIMO streams, channel width, and standards. Real-world achieved speeds are unlikely to reach this value.
+- **Aggregated_MLO_MaxMbps**:  
+ This is a rough upper bound based on Multi Link Operation in 802.11be onwards. Real-world achieved speeds are unlikely to reach this value.
 - **All values are detected** from `iw phy <phyname> info` and debugfs/sysfs — reliable even when radios are disabled.
 
 Feel free to suggest improvements or report issues here.
