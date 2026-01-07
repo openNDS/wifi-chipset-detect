@@ -314,6 +314,12 @@ wifi_chipset_detect() {
 					max_width="20 MHz"
 				fi
 			fi
+
+			# Wi-Fi 7 EHT 320 MHz detection (radar line may be conservative)
+			if echo "$standards" | grep -q "be" && echo "$phy_info" | grep -qi "320MHz"; then
+				max_width="320 MHz"
+			fi
+
 		fi
 
 		# 3. Safety cap: limit pure 2.4 GHz PHYs to 40 MHz max
